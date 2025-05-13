@@ -1,4 +1,9 @@
-exports.config = {
+import { execSync } from 'child_process';
+import fs from 'fs';
+import { addAttachment } from '@wdio/allure-reporter';
+export const baselinePath = './baseline';
+export const screenshotPath = './visual-results';
+export const config = {
     //
     // ====================
     // Runner Configuration
@@ -37,7 +42,7 @@ exports.config = {
     // of the config file unless it's absolute.
     //
     specs: [
-        './test/specs/**/*.js'
+        './test/specs/test.e2e.visual.js'
     ],
     // Patterns to exclude.
     exclude: [
@@ -121,7 +126,20 @@ exports.config = {
     // Services take over a specific job you don't want to take care of. They enhance
     // your test setup with almost no effort. Unlike plugins, they don't add new
     // commands. Instead, they hook themselves up into the test process.
-    // services: [],
+    //
+    // Test runner services
+    // Services take over a specific job you don't want to take care of. They enhance
+    // your test setup with almost no effort. Unlike plugins, they don't add new
+    // commands. Instead, they hook themselves up into the test process.
+    services: [
+        ['appium', {
+            args: {
+                // Optional: pass custom server args here
+                // Example: '--log-level', 'error'
+            },
+            command: 'appium' // make sure Appium is installed globally or in node_modules
+        }]
+    ],
     //
     // Framework you want to run your specs with.
     // The following are supported: Mocha, Jasmine, and Cucumber
@@ -144,7 +162,7 @@ exports.config = {
     // Test reporter for stdout.
     // The only one supported by default is 'dot'
     // see also: https://webdriver.io/docs/dot-reporter
-    reporters: ['spec'],
+    reporters: ['spec', 'allure'],
 
     // Options to be passed to Mocha.
     // See the full list at http://mochajs.org/
@@ -205,8 +223,9 @@ exports.config = {
      * @param {Array.<String>} specs        List of spec file paths that are to be run
      * @param {object}         browser      instance of created browser/device session
      */
-    // before: function (capabilities, specs) {
-    // },
+    before: async function (capabilities, specs, browser) {
+        await import('../test/common/customCommands.js');
+    },
     /**
      * Runs before a WebdriverIO command gets executed.
      * @param {string} commandName hook command name
@@ -247,8 +266,13 @@ exports.config = {
      * @param {boolean} result.passed    true if test has passed, otherwise false
      * @param {object}  result.retries   information about spec related retries, e.g. `{ attempts: 0, limit: 0 }`
      */
-    // afterTest: function(test, context, { error, result, duration, passed, retries }) {
-    // },
+    afterTest : async function(test, context, { error, passed }) {
+        if (!passed) {
+            const filepath = `./errorShots/${test.title.replace(/\s+/g, '_')}.png`;
+            await browser.saveScreenshot(filepath);
+            addAttachment('Screenshot on Failure', fs.readFileSync(filepath), 'image/png');
+        }
+    },
 
 
     /**
@@ -293,6 +317,27 @@ exports.config = {
      */
     // onComplete: function(exitCode, config, capabilities, results) {
     // },
+    // Add this to your wdio.shared.conf.js file
+    onComplete: function(exitCode, config, capabilities, results) {
+
+    try {
+        // Generate the Allure report
+        console.log('Generating Allure report...');
+        execSync('allure generate ./allure-results --clean', { stdio: 'inherit' });
+
+        // Open the Allure report
+        // console.log('Opening Allure report...');
+        // execSync('allure open ./allure-report', { stdio: 'inherit' });
+        //  // Ensure all services are stopped before exiting
+        //  console.log('Stopping services and exiting server...');
+        //  setTimeout(() => {
+        //      process.exit(0); // Forcefully exit the process
+        //  }, 1000); // Add a small delay to ensure all logs are flushed
+    } catch (err) {
+        console.error('Error while generating or opening Allure report:', err);
+        process.exit(1);
+    }
+},
     /**
     * Gets executed when a refresh happens.
     * @param {string} oldSessionId session ID of the old session
@@ -312,4 +357,4 @@ exports.config = {
     */
     // afterAssertion: function(params) {
     // }
-}
+};
